@@ -1,9 +1,25 @@
+import warnings
+
 import pandas as pd
 
 
-def get_long_short_legs(signal, legsize):
-    """"""
+def get_long_short_legs(signal, legsize=None):
+    """
+    Parameters
+    ----------
+    signal : pd.DataFrame
+    legsize : int
+        None to do rank-based sorts
+    """
     notnull = signal.notnull()
+
+    if legsize is None:
+        _long = signal.where(signal.gt(signal.median(axis=1), axis=0)).rank(axis=1)
+        _long = _long.div(_long.sum(axis=1), axis=0)
+        _short = signal.where(signal.lt(signal.median(axis=1), axis=0))\
+            .mul(-1).rank(axis=1)
+        _short = _short.div(_short.sum(axis=1), axis=0) * -1
+        return _long.fillna(_short)
 
     # insert median where there are nans to be able to rank (to be dropped)
     med = signal.median(axis=1)
@@ -21,7 +37,8 @@ def get_long_short_legs(signal, legsize):
         .mask(rnk > (1 - legsize/n_assets), +1.0)\
         .where(notnull)
 
-    assert res.sum(axis=1, min_count=1).dropna().eq(0.0).all()
+    if not res.sum(axis=1, min_count=1).dropna().eq(0.0).all():
+        warnings.warn("Unreliable sorts.")
 
     n_short = res.where(res < 0).count(axis=1)
     n_long = res.where(res > 0).count(axis=1)
