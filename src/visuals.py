@@ -7,15 +7,16 @@ def plot_convolution_filter(
         m,
         xticklabels=None,
         yticklabels=None,
+        figsize=None,
         **heatmap_kwargs
 ) -> plt.Figure:
     """"""
     t, _ = m.shape
 
-    fig, ax = plt.subplots(figsize=(4*1.3, 3*1.3))
+    fig, ax = plt.subplots(figsize=figsize)
 
     # Plot the heatmap
-    sns.heatmap(m, cmap="Reds", annot=True, cbar=False, ax=ax, linewidth=0.25,
+    sns.heatmap(m, cmap="coolwarm", annot=True, cbar=False, ax=ax, linewidth=0.25,
                 fmt=".2f", **heatmap_kwargs)
 
     # Set the x-axis tick labels
