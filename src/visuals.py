@@ -26,7 +26,10 @@ def plot_convolution_filter(
         ax.yaxis.set_major_locator(IndexLocator(base=1, offset=0.5))
         ax.set_yticklabels(yticklabels, rotation=0)
 
-    return fig
+    ax.set_xlabel("tenor")
+    ax.set_ylabel("period")
+
+    return fig, ax
 
 
 # helper to print dataframes nicely

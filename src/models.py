@@ -73,7 +73,7 @@ class ConvNetMaxPool(nn.Module):
 
         # init weights
         with torch.no_grad():
-            nn.init.normal_(self.conv_1.weight, std=0.01)
+            nn.init.normal_(self.conv_1.weight, std=0.1)
             nn.init.zeros_(self.conv_1.bias)
 
         self.act = normalized_softmax
