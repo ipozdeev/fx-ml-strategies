@@ -82,7 +82,7 @@ def test_loop(model, x_test_batched, target_rx) -> float:
 def train_many_models():
     """"""
     # parameters
-    train_smpl_end = pd.to_datetime("2009-12-31")
+    train_smpl_end = pd.to_datetime("2022-12-31")
     test_smpl_start = train_smpl_end + Day()
     lookback = (
             [0, 1, 2, 3, 4, 5] +
@@ -93,7 +93,7 @@ def train_many_models():
     else:
         lookback_list = lookback
 
-    epochs = 40
+    epochs = 15
     lr = 1e-03
 
     # data
@@ -101,7 +101,7 @@ def train_many_models():
 
     # drop illiquid contracts, ffill a lil'
     ts = (data["term_structure_history"].drop(["2y", "1w"], axis=1, level=1) \
-          .ffill(limit=2))
+        .ffill(limit=2))
     rx = data["excess_returns"]
 
     tenors = list(
@@ -152,42 +152,47 @@ def train_many_models():
     )
     x_test = next(iter(dl_test))
 
-    for _m in range(4):
+    for _m in range(5):
         m = ConvNet(lookback if isinstance(lookback, int) else len(lookback),
                     n_tenors, init_weights="normal")
 
-        opt = torch.optim.Adam(m.parameters(), lr=1e-03)
+        opt = torch.optim.Adam(m.parameters(), lr=lr)
 
-        rx_ins = []
-        rx_oos = []
+        rx_ins = np.empty(epochs+1)
+        rx_oos = np.empty(epochs+1)
 
         # pre-training values
-        _rx_i = train_loop(m, custom_loss_return, dl_train, opt)
+        _rx_i = test_loop(
+            m,
+            x_test_batched=next(iter(
+                DataLoader(ds_train, batch_size=len(ds_train), shuffle=False)
+            ))[0],
+            target_rx=rx.loc[ds_train.index]
+        )
         _rx_o = test_loop(m, x_test_batched=x_test, target_rx=rx.loc[ds_test.index])
-        rx_ins.append(_rx_i)
-        rx_oos.append(_rx_o)
+        rx_ins[0] = _rx_i
+        rx_oos[0] = _rx_o
 
         for _e in range(epochs):
             print(f"doing epoch {_e}")
             _rx_i = train_loop(m, custom_loss_return, dl_train, opt)
             _rx_o = test_loop(m, x_test_batched=x_test, target_rx=rx.loc[ds_test.index])
-            rx_ins.append(_rx_i)
-            rx_oos.append(_rx_o)
+            rx_ins[_e+1] = _rx_i
+            rx_oos[_e+1] = _rx_o
 
-            if _e == 15:
-                torch.save(m.state_dict(), f'models/m-{_m}-conv.pth')
+        torch.save(m.state_dict(), f'models/m{_m}-conv.pth')
 
-                fig = plot_convolution_filter(
-                    m.conv_1.weight.detach().numpy()[0, 0, :, :],
-                    xticklabels=tenors,
-                    yticklabels=['t-{}'.format(i) for i in lookback_list[::-1]],
-                    figsize=(5, 2.5),
-                    center=0.0
-                )
-                fig.savefig(f"figures/m-{_m}-conv-post.png", dpi=200)
+        fig, _ = plot_convolution_filter(
+            m.conv_1.weight.detach().numpy()[0, 0, :, :],
+            xticklabels=tenors,
+            yticklabels=['t-{}'.format(i) for i in lookback_list[::-1]],
+            figsize=(5, 2.5),
+            center=0.0
+        )
+        fig.savefig(f"figures/m{_m}-conv-post.png", dpi=200)
 
-            pd.DataFrame({"ins": rx_ins, "oos": rx_oos})\
-                .to_csv(f"data/output/rx-ins-oos-m{_m}.csv")
+        pd.DataFrame({"ins": rx_ins, "oos": rx_oos}, index=np.arange(1, epochs+2))\
+            .to_csv(f"data/output/rx-ins-oos-m{_m}.csv")
 
 
 if __name__ == '__main__':
