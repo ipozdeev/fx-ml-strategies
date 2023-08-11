@@ -1,15 +1,17 @@
 # fx term structure strategies using machine learning
 
-The notebook with detailed walkthrough is in [demo.ipynb](./demo.ipynb).
+The notebook with detailed walkthrough is in [demo.ipynb](./demo.ipynb). Dockerfile to be added soon.
 
 ## idea 
 In this little piece I am trying to generalize popular fx trading strategies such as carry and momentum using machine learning methods. I start with noting that the signals for many such strategies can be derived using suitable convolutions on the log of the term structure history of currencies, or TSH. The TSH of currency _i_ is defined as the $L \times M$ matrix of log-spot and forward prices at different lags, for instance, below is the TSH for the Australian dollar on 2023-05-01:
 
-![term structure history of AUD as of 2023-05-05](./reports/figures/tsh-example.png)
+<!-- ![term structure history of AUD as of 2023-05-05](./reports/figures/tsh-example.png) -->
+<img src="./reports/figures/tsh-example.png" width="500">
 
 If we would like to extract the 1-month carry signal from this matrix, we could convolve it (`pytorch`-style) with the following matrix:
 
-![extracting the 1-month carry](./reports/figures/carry-convolution.png)
+<!-- ![extracting the 1-month carry](./reports/figures/carry-convolution.png) -->
+<img src="./reports/figures/carry-convolution.png" width="500">
 
 In a similar fashion, it is possible to extract the momentum (at different lags), the curvature, the basis momentum and other linear signals, or a moving average thereof. The signals for several currencies can be extracted e.g. by stacking the respective TSHs horizontally and specifying the (left-to-right) stride of the convolution to equal the number of tenors.
 
@@ -17,7 +19,8 @@ This gives hope that the 'optimal' filter(s) which would result in a profitable 
 
 A popular approach to constructing FX trading strategies is the periodically rebalanced long-short portfolio, in which the assets with a high (low) value of the signal are held long (short). A differentiable function that would produce something like this from a set of signals $s$ is the softmax, only slightly modified to range from -1 to 1 and have a higher variance than it normally would; let's call it $\sigma(s)$. To check if constructing a long-short strategy using the normalized softmax is similar to the good old rank-based way, below I plot monthly series of the carry trade done both ways. The average correlation is 0.85.
 
-![](reports/figures/carries.png)
+<!-- ![](reports/figures/carries.png) -->
+<img src="./reports/figures/carries.png" width="500">
 
 A measure of profitability could be just the dot product of the long/short positions thus calculated and the excess returns to be realized later; the negative of this is our loss function suitable for training. 
 
@@ -49,14 +52,18 @@ This has the intent of capturing long- and short-lived patterns. I sample the cr
 
 ## results
 
-For my simple model, it takes a mere of 10 epochs or so to converge to the optimum, as shown in the dynamics of the in-sample return (which is the negative of the loss function, of course): 
+For my simple model, it takes a mere of 10 epochs or so to converge to the optimum, as shown in the dynamics of the in-sample return (which, remember, is the negative of the loss function): 
 
-![](reports/figures/training-progress.png)
+<!-- ![](reports/figures/training-progress.png) -->
+<img src="./reports/figures/training-progress.png" width="500">
 
-By that time, the randomly initialized convolution filter like this:
+By that time, the randomly initialized convolution filter receives increasingly more structure, as demonstrated in the following animation showing the filter over epochs since initialization (in the first frame):
 
-![](reports/figures/conv-untrained.png)
+<!-- ![](reports/figures/conv-trained.gif) -->
+<img src="./reports/figures/conv-training-progress.gif" width="500">
 
-becomes a more structured one, as demonstrated in the following animation for the same five models:
+As apparent from the figure, today's forward price curve (row 't-0') is dominating the signal generation, especially its far end (6, 9 and 12 months). Of course, when initalized differently, the trained filter would also look different, as the model converges to another local minimum &ndash; but the stated above is true in general, as seen e.g. in the following loop across trained models, where the bottom right corner is more pronounced:
 
-![](reports/figures/conv-trained.gif)
+<img src="./reports/figures/conv-trained.gif" width="500">
+
+Another interesting pattern is the occasional prominence of the 't-127' row, corresponding to the period 6 months ago.

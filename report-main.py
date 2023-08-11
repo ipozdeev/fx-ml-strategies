@@ -4,6 +4,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from config import *
+from mpl_config import *
+
 from src.datafeed.dataloader import (
     TermStructureCrossSectionBlockDataset,
     ForwardCrossSectionDataset,
@@ -13,6 +16,7 @@ from src.datafeed.downstream import get_fx_data, maturity_str2num
 from src.losses import custom_loss_return
 from src.models import ConvNet
 from src.visuals import plot_convolution_filter
+
 
 
 def train_loop(model, loss_func, dataloader, optimizer) -> float:
@@ -82,11 +86,11 @@ def test_loop(model, x_test_batched, target_rx) -> float:
 def train_many_models():
     """"""
     # parameters
-    train_smpl_end = pd.to_datetime("2022-12-31")
+    train_smpl_end = pd.to_datetime("2023-06-30")
     test_smpl_start = train_smpl_end + Day()
     lookback = (
-            [0, 1, 2, 3, 4, 5] +
-            list(np.round(np.linspace(22, 252, num=12), 0).astype(int))
+        [0, 1, 2, 3, 4, 5] +
+        list(np.round(np.linspace(22, 252, num=12), 0).astype(int))
     )
     if isinstance(lookback, int):
         lookback_list = list(range(lookback))[::-1]
@@ -138,28 +142,40 @@ def train_many_models():
     )
     ds_train = MultiDataset(ds_back, ds_fwd_rx)
 
-    dl_train = DataLoader(ds_train, batch_size=10, shuffle=True)
+    dl_train = DataLoader(ds_train, batch_size=20, shuffle=True)
 
-    ds_test = TermStructureCrossSectionBlockDataset(
-        np.log(ts.loc[test_smpl_start:]),
-        lookback=lookback,
-        transform=transform_fwd_premium
-    )
-    dl_test = DataLoader(
-        ds_test,
-        batch_size=len(ds_test),
-        shuffle=False
-    )
-    x_test = next(iter(dl_test))
+    # ds_test = TermStructureCrossSectionBlockDataset(
+    #     np.log(ts.loc[test_smpl_start:]),
+    #     lookback=lookback,
+    #     transform=transform_fwd_premium
+    # )
+    # dl_test = DataLoader(
+    #     ds_test,
+    #     batch_size=len(ds_test),
+    #     shuffle=False
+    # )
+    # x_test = next(iter(dl_test))
 
     for _m in range(5):
         m = ConvNet(lookback if isinstance(lookback, int) else len(lookback),
                     n_tenors, init_weights="normal")
+        
+        # untrained filter
+        fig, ax = plot_convolution_filter(
+            m.conv_1.weight.detach().numpy()[0, 0, :, :],
+            xticklabels=tenors,
+            yticklabels=['t-{}'.format(i) for i in lookback_list[::-1]],
+            figsize=(4, 3),
+            center=0.0
+        )
+        ax.set_title(f"convolution, untrained")
+        fig.tight_layout()
+        fig.savefig(f"figures/convolution-pre-training.png", dpi=200)
 
         opt = torch.optim.Adam(m.parameters(), lr=lr)
 
         rx_ins = np.empty(epochs+1)
-        rx_oos = np.empty(epochs+1)
+        # rx_oos = np.empty(epochs+1)
 
         # pre-training values
         _rx_i = test_loop(
@@ -169,30 +185,32 @@ def train_many_models():
             ))[0],
             target_rx=rx.loc[ds_train.index]
         )
-        _rx_o = test_loop(m, x_test_batched=x_test, target_rx=rx.loc[ds_test.index])
+        # _rx_o = test_loop(m, x_test_batched=x_test, target_rx=rx.loc[ds_test.index])
         rx_ins[0] = _rx_i
-        rx_oos[0] = _rx_o
+        # rx_oos[0] = _rx_o
 
         for _e in range(epochs):
             print(f"doing epoch {_e}")
             _rx_i = train_loop(m, custom_loss_return, dl_train, opt)
-            _rx_o = test_loop(m, x_test_batched=x_test, target_rx=rx.loc[ds_test.index])
+            # _rx_o = test_loop(m, x_test_batched=x_test, target_rx=rx.loc[ds_test.index])
             rx_ins[_e+1] = _rx_i
-            rx_oos[_e+1] = _rx_o
+            # rx_oos[_e+1] = _rx_o
 
-        torch.save(m.state_dict(), f'models/m{_m}-conv.pth')
-
-        fig, _ = plot_convolution_filter(
+        fig, ax = plot_convolution_filter(
             m.conv_1.weight.detach().numpy()[0, 0, :, :],
             xticklabels=tenors,
             yticklabels=['t-{}'.format(i) for i in lookback_list[::-1]],
-            figsize=(5, 2.5),
+            figsize=(4, 3),
             center=0.0
         )
-        fig.savefig(f"figures/m{_m}-conv-post.png", dpi=200)
+        ax.set_title(f"trained convolution, example #{_m+1}")
+        fig.tight_layout()
+        fig.savefig(f"figures/trained-conv-{_m+1}.png", dpi=200)
 
-        pd.DataFrame({"ins": rx_ins, "oos": rx_oos}, index=np.arange(1, epochs+2))\
-            .to_csv(f"data/output/rx-ins-oos-m{_m}.csv")
+        torch.save(m.state_dict(), f'models/m{_m}-conv.pth')
+
+        pd.DataFrame({"ins": rx_ins}, index=np.arange(epochs+1))\
+            .to_csv(f"data/output/rx-ins-m{_m}.csv")
 
 
 if __name__ == '__main__':
